@@ -16,17 +16,24 @@ mod state;
 use state::AppState;
 
 #[tokio::test]
-async fn health_check_returns_ok() {
+async fn database_health_check_returns_ok_when_database_is_available() {
+    dotenvy::dotenv().ok();
+
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://secureops:secureops@localhost:5432/secureops".to_string());
+
     let db = PgPoolOptions::new()
-        .connect_lazy("postgres://secureops:secureops@localhost:5432/secureops")
-        .expect("failed to create lazy database pool");
+        .max_connections(1)
+        .connect(&database_url)
+        .await
+        .expect("database must be running for this test");
 
     let app = app::build_app(AppState { db });
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/health")
+                .uri("/health/database")
                 .body(Body::empty())
                 .expect("failed to build request"),
         )
@@ -45,5 +52,5 @@ async fn health_check_returns_ok() {
     let json: Value = serde_json::from_slice(&body).expect("response body was not valid JSON");
 
     assert_eq!(json["status"], "ok");
-    assert_eq!(json["service"], "secureops-api");
+    assert_eq!(json["database"], "connected");
 }
